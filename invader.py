@@ -1,7 +1,7 @@
 """A Space Invader variant.
 """
 import pygame
-from pygame.constants import (QUIT, KEYDOWN, KEYUP, K_LEFT, K_RIGHT, K_ESCAPE)
+from pygame.constants import (QUIT, KEYDOWN, KEYUP, K_LEFT, K_RIGHT, K_ESCAPE, K_SPACE)
 import os
 
 class Settings:
@@ -11,14 +11,13 @@ class Settings:
     are used on many places in the project.
     """
     window_width = 1000
-    window_height = 600
+    window_height = 650
     window_border = 10
-    enemy_dist = 20
-    enemy_nof_cols = 13
     enemy_bottom_border = window_height - 80
     enemy_nof_cols = 13
     file_path = os.path.dirname(os.path.abspath(__file__))
     image_path = os.path.join(file_path, "images")
+    score = (100, 50, 10)
 
 class Background(object):
     """Bitmap class to managethe baground of the game.
@@ -88,6 +87,38 @@ class Defender(pygame.sprite.Sprite):
         """
         self.direction = 0
 
+
+class Rocket(pygame.sprite.Sprite):
+    """Rockets fired by the defender.
+    """
+    def __init__(self, filename, defender):
+        """Constructor
+
+        Loading, converting, and scaling the rocket image.
+        Args:
+            filename (string): name (without path) of the defender bitmap
+            defender (Defender): the defender who launches the rocket
+        """
+        super().__init__()
+        self.image = pygame.image.load(os.path.join(Settings.image_path, filename))
+        self.image = pygame.transform.scale(self.image, (10,10)).convert_alpha()
+        self.rect = self.image.get_rect()
+        self.rect.centerx = defender.rect.centerx
+        self.rect.bottom = defender.rect.top
+        self.direction = -1
+        self.speed = 3
+        self.is_to_remove = False
+
+    def update(self):
+        """Updates the position and the status of the rocket.
+        """
+        newrect = self.rect.move(0, self.direction * self.speed)
+        if newrect.bottom > 100:
+            self.rect = newrect
+        else:
+            self.is_to_remove = True
+
+
 class Enemy(pygame.sprite.Sprite):
     """Enemy sprite class. 
 
@@ -112,6 +143,7 @@ class Enemy(pygame.sprite.Sprite):
         self.image = pygame.transform.scale(self.image, (50,45)).convert_alpha()
         self.rect = self.image.get_rect()
         self.distance = 10
+        self.score = Settings.score[rowindex//4]
         newx = Settings.window_border + (self.rect.width  + self.distance) * colindex
         newy = Settings.window_border + (self.rect.height + self.distance) * rowindex
         self.rect.move_ip(newx, newy)
@@ -174,22 +206,25 @@ if __name__ == '__main__':
 
     screen = pygame.display.set_mode((Settings.window_width, Settings.window_height))
     clock = pygame.time.Clock()
+    score = 0
+    font = pygame.font.Font(pygame.font.get_default_font(), 24)
+
 
     # All sprites are organized in sprite groups
-    all_sprites = pygame.sprite.Group()
+    all_defenders = pygame.sprite.Group()
     all_enemies = pygame.sprite.Group()
+    all_rockets = pygame.sprite.Group()
 
     # Creating background and defender 
     background = Background("background03.png")
     defender = Defender("defender01.png")    
-    all_sprites.add(defender)
+    all_defenders.add(defender)
 
     # Creating and ositioning the enemies in columns and rows
     for rowindex in range(0, 8):
         for colindex in range(0, Settings.enemy_nof_cols):
             aliennumber = rowindex // 2
             enemy = Enemy("alienbig0{0}01.png".format(aliennumber), colindex, rowindex)
-            all_sprites.add(enemy)
             all_enemies.add(enemy)
 
     running = True 
@@ -205,6 +240,10 @@ if __name__ == '__main__':
                     defender.move_left()
                 elif event.key == K_RIGHT:
                     defender.move_right()
+                elif event.key == K_SPACE:
+                    if len(all_rockets) < 6:
+                        rocket = Rocket("shoot.png", defender)
+                        all_rockets.add(rocket)
             elif event.type == KEYUP:
                 if event.key == K_LEFT or  event.key == K_RIGHT:
                     defender.move_stop()
@@ -213,7 +252,7 @@ if __name__ == '__main__':
         # Update defender
         defender.update()
         
-        # Update enemies
+        #Update enemies
         has_horizontal_border_reached = False
         for enemy in all_enemies:
             if enemy.is_horizontal_border_reached():
@@ -234,9 +273,29 @@ if __name__ == '__main__':
             if not has_vertical_border_reached:
                 Enemy.switch_vertical_direction()
 
-        # Draw all sprites
+        # Update rockets       
+        all_rockets.update()
+        rockets_to_remove = pygame.sprite.Group()
+        enemies_to_remove = pygame.sprite.Group()
+        for rocket in all_rockets:
+            tmp = pygame.sprite.spritecollide(rocket, all_enemies, False)
+            if len(tmp) > 0:
+                rocket.is_to_remove = True
+                enemies_to_remove.add(tmp)
+                for t in tmp:
+                    score += t.score
+            if rocket.is_to_remove:
+                rockets_to_remove.add(rocket)
+        all_rockets.remove(rockets_to_remove)
+        all_enemies.remove(enemies_to_remove)
+
+        # Draw
         background.draw(screen)
-        all_sprites.draw(screen)
+        all_defenders.draw(screen)
+        all_enemies.draw(screen)
+        all_rockets.draw(screen)
+        text_surface_scrore = font.render("Score: {0}".format(score), True, (255,255,255))
+        screen.blit(text_surface_scrore, (Settings.window_border, Settings.window_height - 50))
         pygame.display.flip()
 
     #pylint: disable=no-member
