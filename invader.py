@@ -131,11 +131,11 @@ class Enemy(pygame.sprite.Sprite):
         Enemy.direction_horizontal *= -1
 
     @staticmethod
+    def switch_vertical_direction():
         """Switches the vertical direction from up to down or from down to up. 
 
         It is implemented as a static method because all enemies must switch at the same time.
         """
-    def switch_vertical_direction():
         if Enemy.direction_vertical == 0:
             Enemy.direction_vertical = 1
         else:
