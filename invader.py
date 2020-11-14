@@ -144,6 +144,44 @@ class Defender(pygame.sprite.Sprite):
         return self.imageindex_explosion >= 0 and not self.is_exploded()
 
 
+class Brick(pygame.sprite.Sprite):
+    """One brick of the wall.
+    """
+
+    def __init__(self):
+        """Constructor
+        """
+        super().__init__()
+        self.images = []
+        for index in range(1, 4):
+            bitmap = pygame.image.load(os.path.join(
+                Settings.image_path, "brick0{0}.png".format(index)))
+            bitmap = pygame.transform.scale(bitmap, (10, 10)).convert_alpha()
+            self.images.append(bitmap)
+        self.imageindex = 0
+        self.image = self.images[self.imageindex]
+        self.rect = self.image.get_rect()
+
+    def hit(self):
+        """The brick was hit by bomb or rocket.
+        """
+        self.imageindex += 1
+        if self.imageindex >= len(self.images):
+            self.imageindex = -1
+        else:
+            self.image = self.images[self.imageindex]
+
+    def is_destroyed(self):
+        """Checks if the brick was hit to often.
+
+        If the brick was hit more often then the length of the
+        brick bitmap array, it is destroyed.
+
+        Returns:
+            bool: True if the brick was hit to often, otherwise False.
+        """
+        return self.imageindex == -1
+
 
 class Rocket(pygame.sprite.Sprite):
     """Rockets fired by the defender.
@@ -266,7 +304,6 @@ class Enemy(pygame.sprite.Sprite):
         self.flipcounter = self.fliptime_alive
         self.fliptime_explosion = 3
 
-
     def update(self):
         """ Updates the status an behaviour.
 
@@ -381,6 +418,7 @@ class Game(object):
     After creating the game object you start the game with the
     method run().
     """
+
     def __init__(self):
         """Constructor.
         """
@@ -396,6 +434,7 @@ class Game(object):
         self.all_enemies_exploding = pygame.sprite.Group()
         self.all_rockets = pygame.sprite.Group()
         self.all_bombs = pygame.sprite.Group()
+        self.all_bricks = pygame.sprite.Group()
 
         self.background = Background("background03.png")
         self.defender = Defender("defender01.png")
@@ -406,6 +445,8 @@ class Game(object):
                 enemy = Enemy("alienbig0{0}0{1}.png",
                               aliennumber, colindex, rowindex)
                 self.all_enemies_alive.add(enemy)
+
+        self.init_bricks()
 
     def run(self):
         """Starting the game.
@@ -433,24 +474,48 @@ class Game(object):
         self.all_enemies_exploding.draw(self.screen)
         self.all_rockets.draw(self.screen)
         self.all_bombs.draw(self.screen)
+        self.all_bricks.draw(self.screen)
+
         text_surface_scrore = self.font.render(
             "Score: {0}".format(self.score), True, (255, 255, 255))
         self.screen.blit(text_surface_scrore,
                          (Settings.window_border, Settings.window_height - 50))
         pygame.display.flip()
 
-
     def collision_bombs(self):
         """Game logic: defender and bomb.
         """
-        bombs_to_remove = pygame.sprite.Group()
+        # bomb hits defender
         tmp = pygame.sprite.spritecollide(self.defender, self.all_bombs, True)
         if len(tmp) > 0:
             self.defender.hit_by_bomb()
+
+        # bomb hits brick
+        for brick in self.all_bricks:
+            tmp = pygame.sprite.spritecollide(brick, self.all_bombs, True)
+            if len(tmp) > 0:
+                brick.hit()
+
+        self.remove_bombs()
+        self.remove_bricks()
+
+    def remove_bombs(self):
+        """Remove all marked bombs.
+        """
+        bombs_to_remove = pygame.sprite.Group()
         for bomb in self.all_bombs:
             if bomb.is_to_remove:
                 bombs_to_remove.add(bomb)
         self.all_bombs.remove(bombs_to_remove)
+
+    def remove_bricks(self):
+        """Remove all markes bricks.
+        """
+        bricks_to_remove = pygame.sprite.Group()
+        for brick in self.all_bricks:
+            if brick.is_destroyed():
+                bricks_to_remove.add(brick)
+        self.all_bricks.remove(bricks_to_remove)
 
     def collision_rockets(self):
         """Game logic: enemies and rockets.
@@ -470,12 +535,21 @@ class Game(object):
             if rocket.is_to_remove:
                 rockets_to_remove.add(rocket)
         self.all_rockets.remove(rockets_to_remove)
+
         # Check enemies
         enemies_to_remove = pygame.sprite.Group()
         for enemy in self.all_enemies_exploding:
             if enemy.is_exploded():
                 enemies_to_remove.add(enemy)
         self.all_enemies_exploding.remove(enemies_to_remove)
+
+        # Rocket hits brick
+        for brick in self.all_bricks:
+            tmp = pygame.sprite.spritecollide(brick, self.all_rockets, True)
+            if len(tmp) > 0:
+                brick.hit()
+
+        self.remove_bricks()
 
     def drop_bomb(self):
         """Game logic: when will and how drops a bomb.
@@ -487,8 +561,6 @@ class Game(object):
                 bomb = Bomb("bomb.png", enemy)
                 self.all_bombs.add(bomb)
                 enemy.dropped_bomb()
-															   
-										
 
     def update(self):
         """Game logic: updates all sprites according to intended behaviour.
@@ -539,11 +611,34 @@ class Game(object):
                 elif event.key == K_SPACE:
                     if len(self.all_rockets) < Settings.max_rockets:
                         rocket = Rocket("shoot.png", self.defender)
-											 
+
                         self.all_rockets.add(rocket)
             elif event.type == KEYUP:
                 if event.key == K_LEFT or event.key == K_RIGHT:
                     self.defender.move_stop()
+
+    def init_bricks(self):
+        """Setup the 4 walls to protect the defender.
+        """
+        map = []
+        map.append("..XXXXXXX..")
+        map.append(".XXXX.XXXX.")
+        map.append("XXXX...XXXX")
+        map.append("XXXX...XXXX")
+
+        startx = 150
+        starty = Settings.window_height - 100
+        distance = 200
+        for wall in range(4):
+            for row in range(len(map)):
+                for col in range(len(map[row])):
+                    if map[row][col] == "X":
+                        brick = Brick()
+                        brick.rect.left = startx + \
+                            (wall * distance) + (col * brick.rect.width)
+                        brick.rect.top = starty + (row * brick.rect.height)
+                        self.all_bricks.add(brick)
+
 
 if __name__ == '__main__':
     os.environ['SDL_VIDEO_WINDOW_POS'] = "10, 50"
@@ -553,7 +648,7 @@ if __name__ == '__main__':
 
     game = Game()
     game.run()
-    
+
     #pylint: disable=no-member
     pygame.quit()
     #pylint: enable=no-member
