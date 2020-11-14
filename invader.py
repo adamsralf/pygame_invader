@@ -58,9 +58,9 @@ class Defender(pygame.sprite.Sprite):
     def __init__(self, filename):
         """Constructor
 
-        Loading, converting, and scaling the defender image.
+        Loading, converting, and scaling the defender images.
         Args:
-            filename (string): name (without path) of the defender bitmap
+            filename (string): name (without path) of the defender alive bitmap
         """
         super().__init__()
         self.image_alive = pygame.image.load(
@@ -86,7 +86,7 @@ class Defender(pygame.sprite.Sprite):
         self.flipcounter = self.fliptime_explosion
 
     def update(self):
-        """Implemention of the horizontal movements
+        """Implemention of the horizontal movements, status and animation
         """
         if self.imageindex_explosion == -1:
             self.image = self.image_alive
@@ -98,6 +98,8 @@ class Defender(pygame.sprite.Sprite):
                     self.flipcounter = self.fliptime_explosion
                 else:
                     self.flipcounter -= 1
+            else:
+                self.kill()
 
         newrect = self.rect.move(self.direction * self.speed, 0)
         if newrect.left <= Settings.window_border:
@@ -127,22 +129,6 @@ class Defender(pygame.sprite.Sprite):
         self.imageindex_explosion = 0
         self.flipcounter = self.fliptime_explosion
 
-    def is_exploded(self):
-        """Checks if defender explosion has finished.
-
-        Returns:
-            bool: True if explosion animation has finished, otherwise False
-        """
-        return self.imageindex_explosion >= len(self.images_explosion)
-
-    def is_exploding(self):
-        """Checks if defender explosion is ongoing.
-
-        Returns:
-            bool: True if explosion animation is running, otherwise False
-        """
-        return self.imageindex_explosion >= 0 and not self.is_exploded()
-
 
 class Brick(pygame.sprite.Sprite):
     """One brick of the wall.
@@ -167,20 +153,9 @@ class Brick(pygame.sprite.Sprite):
         """
         self.imageindex += 1
         if self.imageindex >= len(self.images):
-            self.imageindex = -1
+            self.kill()
         else:
             self.image = self.images[self.imageindex]
-
-    def is_destroyed(self):
-        """Checks if the brick was hit to often.
-
-        If the brick was hit more often then the length of the
-        brick bitmap array, it is destroyed.
-
-        Returns:
-            bool: True if the brick was hit to often, otherwise False.
-        """
-        return self.imageindex == -1
 
 
 class Rocket(pygame.sprite.Sprite):
@@ -199,13 +174,12 @@ class Rocket(pygame.sprite.Sprite):
         self.image = pygame.image.load(
             os.path.join(Settings.image_path, filename))
         self.image = pygame.transform.scale(
-            self.image, (10, 10)).convert_alpha()
+            self.image, (5, 10)).convert_alpha()
         self.rect = self.image.get_rect()
         self.rect.centerx = defender.rect.centerx
         self.rect.bottom = defender.rect.top
         self.direction = -1
         self.speed = 3
-        self.is_to_remove = False
 
     def update(self):
         """Updates the position and the status of the rocket.
@@ -214,11 +188,11 @@ class Rocket(pygame.sprite.Sprite):
         if newrect.bottom > 0:
             self.rect = newrect
         else:
-            self.is_to_remove = True
+            self.kill()
 
 
 class Bomb(pygame.sprite.Sprite):
-    """Bombs droped by the enemies
+    """Bombs dropped by the enemies
     """
 
     def __init__(self, filename, enemy):
@@ -239,7 +213,6 @@ class Bomb(pygame.sprite.Sprite):
         self.rect.top = enemy.rect.bottom
         self.direction = 1
         self.speed = 3
-        self.is_to_remove = False
 
     def update(self):
         """Updates the position and the status of the bomb.
@@ -248,7 +221,7 @@ class Bomb(pygame.sprite.Sprite):
         if newrect.top < Settings.window_height - Settings.window_border:
             self.rect = newrect
         else:
-            self.is_to_remove = True
+            self.kill()
 
 
 class Enemy(pygame.sprite.Sprite):
@@ -305,7 +278,7 @@ class Enemy(pygame.sprite.Sprite):
         self.fliptime_explosion = 3
 
     def update(self):
-        """ Updates the status an behaviour.
+        """Updates the status an behaviour.
 
         Implemention of the horizontal and vertical movements and
         if and how the animation runs.
@@ -327,6 +300,8 @@ class Enemy(pygame.sprite.Sprite):
                     self.flipcounter = self.fliptime_explosion
                 else:
                     self.flipcounter -= 1
+            else:
+                self.kill()
 
         self.rect.move_ip(Enemy.direction_horizontal * Enemy.speed_horizontal,
                           Enemy.direction_vertical * Enemy.speed_vertical)
@@ -377,7 +352,7 @@ class Enemy(pygame.sprite.Sprite):
         return False
 
     def dropped_bomb(self):
-        """Indicates that the enemy has droped a bomb.
+        """Indicates that the enemy has dropped a bomb.
         """
         self.imageindex_alive = 1
 
@@ -385,7 +360,7 @@ class Enemy(pygame.sprite.Sprite):
         """Checks if the enemy can drop a bomb.
 
         Returns:
-            bool: True if droping animation hasn't startet or is finished, otherwise Fals
+            bool: True if dropping animation hasn't startet or is finished, otherwise Fals
         """
         return self.flipcounter == self.fliptime_alive
 
@@ -394,22 +369,6 @@ class Enemy(pygame.sprite.Sprite):
         """
         self.imageindex_explosion = 0
         self.flipcounter = self.fliptime_explosion
-
-    def is_exploded(self):
-        """Checks if the explosion animation has finished.
-
-        Returns:
-            bool: True if explosion animation has finished, otherwise False.
-        """
-        return self.imageindex_explosion >= len(self.images_explosion)
-
-    def is_exploding(self):
-        """Checks if the explosion animation is running.
-
-        Returns:
-            bool: True if explosion animation is running, otherwise False.
-        """
-        return self.imageindex_explosion >= 0 and not self.is_exploded()
 
 
 class Game(object):
@@ -486,70 +445,33 @@ class Game(object):
         """Game logic: defender and bomb.
         """
         # bomb hits defender
-        tmp = pygame.sprite.spritecollide(self.defender, self.all_bombs, True)
-        if len(tmp) > 0:
+        if pygame.sprite.spritecollide(self.defender, self.all_bombs, True):
             self.defender.hit_by_bomb()
 
         # bomb hits brick
         for brick in self.all_bricks:
-            tmp = pygame.sprite.spritecollide(brick, self.all_bombs, True)
-            if len(tmp) > 0:
+            if pygame.sprite.spritecollide(brick, self.all_bombs, True):
                 brick.hit()
-
-        self.remove_bombs()
-        self.remove_bricks()
-
-    def remove_bombs(self):
-        """Remove all marked bombs.
-        """
-        bombs_to_remove = pygame.sprite.Group()
-        for bomb in self.all_bombs:
-            if bomb.is_to_remove:
-                bombs_to_remove.add(bomb)
-        self.all_bombs.remove(bombs_to_remove)
-
-    def remove_bricks(self):
-        """Remove all markes bricks.
-        """
-        bricks_to_remove = pygame.sprite.Group()
-        for brick in self.all_bricks:
-            if brick.is_destroyed():
-                bricks_to_remove.add(brick)
-        self.all_bricks.remove(bricks_to_remove)
 
     def collision_rockets(self):
         """Game logic: enemies and rockets.
         """
         # Check rockets
-        rockets_to_remove = pygame.sprite.Group()
         for rocket in self.all_rockets:
             tmp = pygame.sprite.spritecollide(
                 rocket, self.all_enemies_alive, False)
             if len(tmp) > 0:
-                rocket.is_to_remove = True
+                rocket.kill()
                 self.all_enemies_alive.remove(tmp)
                 self.all_enemies_exploding.add(tmp)
                 for enemy in tmp:
                     enemy.hit_by_rocket()
                     self.score += enemy.score
-            if rocket.is_to_remove:
-                rockets_to_remove.add(rocket)
-        self.all_rockets.remove(rockets_to_remove)
-
-        # Check enemies
-        enemies_to_remove = pygame.sprite.Group()
-        for enemy in self.all_enemies_exploding:
-            if enemy.is_exploded():
-                enemies_to_remove.add(enemy)
-        self.all_enemies_exploding.remove(enemies_to_remove)
 
         # Rocket hits brick
         for brick in self.all_bricks:
-            tmp = pygame.sprite.spritecollide(brick, self.all_rockets, True)
-            if len(tmp) > 0:
+            if pygame.sprite.spritecollide(brick, self.all_rockets, True):
                 brick.hit()
-
-        self.remove_bricks()
 
     def drop_bomb(self):
         """Game logic: when will and how drops a bomb.
@@ -611,7 +533,6 @@ class Game(object):
                 elif event.key == K_SPACE:
                     if len(self.all_rockets) < Settings.max_rockets:
                         rocket = Rocket("shoot.png", self.defender)
-
                         self.all_rockets.add(rocket)
             elif event.type == KEYUP:
                 if event.key == K_LEFT or event.key == K_RIGHT:
