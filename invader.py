@@ -25,7 +25,6 @@ class Settings:
     max_rockets = 6
 
 
-
 class Background(object):
     """Bitmap class to managethe baground of the game.
     """
@@ -137,6 +136,7 @@ class Rocket(pygame.sprite.Sprite):
 class Bomb(pygame.sprite.Sprite):
     """Bombs droped by the enemies
     """
+
     def __init__(self, filename, enemy):
         """Constructor.
 
@@ -146,8 +146,10 @@ class Bomb(pygame.sprite.Sprite):
             enemy (Enemy): the enemy who drops the bomb
         """
         super().__init__()
-        self.image = pygame.image.load(os.path.join(Settings.image_path, filename))
-        self.image = pygame.transform.scale(self.image, (10, 10)).convert_alpha()
+        self.image = pygame.image.load(
+            os.path.join(Settings.image_path, filename))
+        self.image = pygame.transform.scale(
+            self.image, (10, 10)).convert_alpha()
         self.rect = self.image.get_rect()
         self.rect.centerx = enemy.rect.centerx
         self.rect.top = enemy.rect.bottom
@@ -164,6 +166,7 @@ class Bomb(pygame.sprite.Sprite):
         else:
             self.is_to_remove = True
 
+
 class Enemy(pygame.sprite.Sprite):
     """Enemy sprite class. 
 
@@ -174,7 +177,7 @@ class Enemy(pygame.sprite.Sprite):
     speed_vertical = 0
     direction_vertical = 0
 
-    def __init__(self, filename, colindex, rowindex):
+    def __init__(self, filename, aliennumber, colindex, rowindex):
         """Constructor.
 
         Loading, converting, and scaling the enemy bitmaps.
@@ -185,10 +188,24 @@ class Enemy(pygame.sprite.Sprite):
             rowindex (int): number of the row of the sprite
         """
         super().__init__()
-        self.image = pygame.image.load(
-            os.path.join(Settings.image_path, filename))
-        self.image = pygame.transform.scale(
-            self.image, (50, 45)).convert_alpha()
+        self.images_alive = []
+        self.imageindex_alive = -1
+        for i in range(1, 3):
+            bitmap = pygame.image.load(os.path.join(
+                Settings.image_path, filename.format(aliennumber, i)))
+            bitmap = pygame.transform.scale(bitmap, (50, 45)).convert_alpha()
+            self.images_alive.append(bitmap)
+        self.imageindex_alive = 0
+
+        self.images_explosion = []
+        self.imageindex_explosion = -1
+        for i in range(1, 5):
+            bitmap = pygame.image.load(os.path.join(
+                Settings.image_path, "explosion0{0}.png".format(i)))
+            bitmap = pygame.transform.scale(bitmap, (50, 45)).convert_alpha()
+            self.images_explosion.append(bitmap)
+
+        self.image = self.images_alive[self.imageindex_alive]
         self.rect = self.image.get_rect()
         self.distance = 5
         self.score = Settings.score[rowindex//4]
@@ -198,10 +215,32 @@ class Enemy(pygame.sprite.Sprite):
             (self.rect.height + self.distance) * rowindex
         self.rect.move_ip(newx, newy)
         Enemy.speed_vertical = self.rect.height // 4
+        self.fliptime_alive = 10
+        self.flipcounter = self.fliptime_alive
+        self.fliptime_explosion = 3
+
 
     def update(self):
         """Implemention of the horizontal and vertical movements
         """
+        if self.imageindex_explosion == -1:
+            self.image = self.images_alive[self.imageindex_alive]
+            if self.imageindex_alive == 1:
+                if self.flipcounter <= 0:
+                    self.imageindex_alive = 0
+                    self.flipcounter = self.fliptime_alive
+                else:
+                    self.flipcounter -= 1
+        else:
+            self.imageindex_alive = -1
+            if self.imageindex_explosion < len(self.images_explosion):
+                self.image = self.images_explosion[self.imageindex_explosion]
+                if self.flipcounter <= 0:
+                    self.imageindex_explosion += 1
+                    self.flipcounter = self.fliptime_explosion
+                else:
+                    self.flipcounter -= 1
+
         self.rect.move_ip(Enemy.direction_horizontal * Enemy.speed_horizontal,
                           Enemy.direction_vertical * Enemy.speed_vertical)
 
@@ -250,6 +289,22 @@ class Enemy(pygame.sprite.Sprite):
             return True
         return False
 
+    def dropped_bomb(self):
+        self.imageindex_alive = 1
+
+    def can_drop(self):
+        return self.flipcounter == self.fliptime_alive
+
+    def hit_by_rocket(self):
+        self.imageindex_explosion = 0
+        self.flipcounter = self.fliptime_explosion
+
+    def is_exploded(self):
+        return self.imageindex_explosion >= len(self.images_explosion)
+
+    def is_exploding(self):
+        return self.imageindex_explosion >= 0 and not self.is_exploded()
+
 
 if __name__ == '__main__':
     os.environ['SDL_VIDEO_WINDOW_POS'] = "10, 50"
@@ -265,7 +320,8 @@ if __name__ == '__main__':
 
     # All sprites are organized in sprite groups
     all_defenders = pygame.sprite.Group()
-    all_enemies = pygame.sprite.Group()
+    all_enemies_alive = pygame.sprite.Group()
+    all_enemies_exploding = pygame.sprite.Group()
     all_rockets = pygame.sprite.Group()
     all_bombs = pygame.sprite.Group()
 
@@ -278,9 +334,9 @@ if __name__ == '__main__':
     for rowindex in range(0, 8):
         for colindex in range(0, Settings.enemy_nof_cols):
             aliennumber = rowindex // 2
-            enemy = Enemy("alienbig0{0}01.png".format(
-                aliennumber), colindex, rowindex)
-            all_enemies.add(enemy)
+            enemy = Enemy("alienbig0{0}0{1}.png",
+                          aliennumber, colindex, rowindex)
+            all_enemies_alive.add(enemy)
 
     running = True
     while running:
@@ -308,12 +364,12 @@ if __name__ == '__main__':
 
         # Update enemies
         has_horizontal_border_reached = False
-        for enemy in all_enemies:
+        for enemy in all_enemies_alive:
             if enemy.is_horizontal_border_reached():
                 has_horizontal_border_reached = True
                 break
         has_vertical_border_reached = False
-        for enemy in all_enemies:
+        for enemy in all_enemies_alive:
             if enemy.is_vertical_border_reached():
                 has_vertical_border_reached = True
                 break
@@ -322,31 +378,46 @@ if __name__ == '__main__':
             Enemy.switch_horizontal_direction()
             if not has_vertical_border_reached:
                 Enemy.switch_vertical_direction()
-        all_enemies.update()
+
         if has_horizontal_border_reached:
             if not has_vertical_border_reached:
                 Enemy.switch_vertical_direction()
 
+        all_enemies_alive.update()
+        all_enemies_exploding.update()
+
         # Update rockets
         all_rockets.update()
         rockets_to_remove = pygame.sprite.Group()
-        enemies_to_remove = pygame.sprite.Group()
+												 
         for rocket in all_rockets:
-            tmp = pygame.sprite.spritecollide(rocket, all_enemies, False)
+            tmp = pygame.sprite.spritecollide(rocket, all_enemies_alive, False)
             if len(tmp) > 0:
                 rocket.is_to_remove = True
-                enemies_to_remove.add(tmp)
-                for t in tmp:
-                    score += t.score
+                all_enemies_alive.remove(tmp)
+                all_enemies_exploding.add(tmp)
+                for enemy in tmp:
+                    enemy.hit_by_rocket()
+                    score += enemy.score
             if rocket.is_to_remove:
                 rockets_to_remove.add(rocket)
         all_rockets.remove(rockets_to_remove)
-        all_enemies.remove(enemies_to_remove)
+
+        # Update Enemies
+        enemies_to_remove = pygame.sprite.Group()
+        for enemy in all_enemies_exploding:
+            if enemy.is_exploded():
+                enemies_to_remove.add(enemy)
+        all_enemies_exploding.remove(enemies_to_remove)
 
         # Drop bombs
-        if len(all_bombs) < Settings.max_bombs and len(all_enemies) > 0:
-            enemy_index = randint(0, len(all_enemies) - 1)
-            bomb = Bomb("bomb.png", all_enemies.sprites()[enemy_index])
+        if len(all_bombs) < Settings.max_bombs and len(all_enemies_alive) > 0:
+            enemy_index = randint(0, len(all_enemies_alive) - 1)
+            enemy = all_enemies_alive.sprites()[enemy_index]
+            if enemy.can_drop():
+                bomb = Bomb("bomb.png", enemy)
+                all_bombs.add(bomb)
+                enemy.dropped_bomb()
             all_bombs.add(bomb)
         all_bombs.update()
         bombs_to_remove = pygame.sprite.Group()
@@ -361,7 +432,8 @@ if __name__ == '__main__':
         # Draw
         background.draw(screen)
         all_defenders.draw(screen)
-        all_enemies.draw(screen)
+        all_enemies_alive.draw(screen)
+        all_enemies_exploding.draw(screen)
         all_rockets.draw(screen)
         all_bombs.draw(screen)
 
