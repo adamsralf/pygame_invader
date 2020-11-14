@@ -1,8 +1,11 @@
 """A Space Invader variant.
 """
 import pygame
-from pygame.constants import (QUIT, KEYDOWN, KEYUP, K_LEFT, K_RIGHT, K_ESCAPE, K_SPACE)
+from pygame.constants import (
+    QUIT, KEYDOWN, KEYUP, K_LEFT, K_RIGHT, K_ESCAPE, K_SPACE)
 import os
+from random import randint
+
 
 class Settings:
     """Project global informations.
@@ -18,10 +21,15 @@ class Settings:
     file_path = os.path.dirname(os.path.abspath(__file__))
     image_path = os.path.join(file_path, "images")
     score = (100, 50, 10)
+    max_bombs = 6
+    max_rockets = 6
+
+
 
 class Background(object):
     """Bitmap class to managethe baground of the game.
     """
+
     def __init__(self, filename):
         """Constructor
 
@@ -29,8 +37,10 @@ class Background(object):
         Args:
             filename (string): name (without path) of the background bitmap
         """
-        self.image = pygame.image.load(os.path.join(Settings.image_path, filename))
-        self.image = pygame.transform.scale(self.image, (Settings.window_width, Settings.window_height)).convert()
+        self.image = pygame.image.load(
+            os.path.join(Settings.image_path, filename))
+        self.image = pygame.transform.scale(
+            self.image, (Settings.window_width, Settings.window_height)).convert()
         self.rect = self.image.get_rect()
 
     def draw(self, screen):
@@ -45,6 +55,7 @@ class Background(object):
 class Defender(pygame.sprite.Sprite):
     """Defender sprite class.
     """
+
     def __init__(self, filename):
         """Constructor
 
@@ -53,8 +64,10 @@ class Defender(pygame.sprite.Sprite):
             filename (string): name (without path) of the defender bitmap
         """
         super().__init__()
-        self.image = pygame.image.load(os.path.join(Settings.image_path, filename))
-        self.image = pygame.transform.scale(self.image, (30,30)).convert_alpha()
+        self.image = pygame.image.load(
+            os.path.join(Settings.image_path, filename))
+        self.image = pygame.transform.scale(
+            self.image, (30, 30)).convert_alpha()
         self.rect = self.image.get_rect()
         self.rect.centerx = Settings.window_width // 2
         self.rect.bottom = Settings.window_height - Settings.window_border
@@ -70,7 +83,6 @@ class Defender(pygame.sprite.Sprite):
         if newrect.right >= Settings.window_width - Settings.window_border:
             self.move_stop()
         self.rect.move_ip(self.direction * self.speed, 0)
-
 
     def move_left(self):
         """Sets the direction to left.
@@ -91,17 +103,20 @@ class Defender(pygame.sprite.Sprite):
 class Rocket(pygame.sprite.Sprite):
     """Rockets fired by the defender.
     """
+
     def __init__(self, filename, defender):
-        """Constructor
+        """Constructor.
 
         Loading, converting, and scaling the rocket image.
         Args:
-            filename (string): name (without path) of the defender bitmap
+            filename (string): name (without path) of the rocket bitmap
             defender (Defender): the defender who launches the rocket
         """
         super().__init__()
-        self.image = pygame.image.load(os.path.join(Settings.image_path, filename))
-        self.image = pygame.transform.scale(self.image, (10,10)).convert_alpha()
+        self.image = pygame.image.load(
+            os.path.join(Settings.image_path, filename))
+        self.image = pygame.transform.scale(
+            self.image, (10, 10)).convert_alpha()
         self.rect = self.image.get_rect()
         self.rect.centerx = defender.rect.centerx
         self.rect.bottom = defender.rect.top
@@ -113,11 +128,41 @@ class Rocket(pygame.sprite.Sprite):
         """Updates the position and the status of the rocket.
         """
         newrect = self.rect.move(0, self.direction * self.speed)
-        if newrect.bottom > 100:
+        if newrect.bottom > 0:
             self.rect = newrect
         else:
             self.is_to_remove = True
 
+
+class Bomb(pygame.sprite.Sprite):
+    """Bombs droped by the enemies
+    """
+    def __init__(self, filename, enemy):
+        """Constructor.
+
+        Loading, converting, and scaling the bomb image.
+        Args:
+            filename (string): name (without path) of the bomb bitmap
+            enemy (Enemy): the enemy who drops the bomb
+        """
+        super().__init__()
+        self.image = pygame.image.load(os.path.join(Settings.image_path, filename))
+        self.image = pygame.transform.scale(self.image, (10, 10)).convert_alpha()
+        self.rect = self.image.get_rect()
+        self.rect.centerx = enemy.rect.centerx
+        self.rect.top = enemy.rect.bottom
+        self.direction = 1
+        self.speed = 3
+        self.is_to_remove = False
+
+    def update(self):
+        """Updates the position and the status of the bomb.
+        """
+        newrect = self.rect.move(0, self.direction * self.speed)
+        if newrect.top < Settings.window_height - Settings.window_border:
+            self.rect = newrect
+        else:
+            self.is_to_remove = True
 
 class Enemy(pygame.sprite.Sprite):
     """Enemy sprite class. 
@@ -128,6 +173,7 @@ class Enemy(pygame.sprite.Sprite):
     direction_horizontal = 1
     speed_vertical = 0
     direction_vertical = 0
+
     def __init__(self, filename, colindex, rowindex):
         """Constructor.
 
@@ -139,20 +185,25 @@ class Enemy(pygame.sprite.Sprite):
             rowindex (int): number of the row of the sprite
         """
         super().__init__()
-        self.image = pygame.image.load(os.path.join(Settings.image_path, filename))
-        self.image = pygame.transform.scale(self.image, (50,45)).convert_alpha()
+        self.image = pygame.image.load(
+            os.path.join(Settings.image_path, filename))
+        self.image = pygame.transform.scale(
+            self.image, (50, 45)).convert_alpha()
         self.rect = self.image.get_rect()
-        self.distance = 10
+        self.distance = 5
         self.score = Settings.score[rowindex//4]
-        newx = Settings.window_border + (self.rect.width  + self.distance) * colindex
-        newy = Settings.window_border + (self.rect.height + self.distance) * rowindex
+        newx = Settings.window_border + \
+            (self.rect.width + self.distance) * colindex
+        newy = Settings.window_border + \
+            (self.rect.height + self.distance) * rowindex
         self.rect.move_ip(newx, newy)
         Enemy.speed_vertical = self.rect.height // 4
 
     def update(self):
         """Implemention of the horizontal and vertical movements
         """
-        self.rect.move_ip(Enemy.direction_horizontal * Enemy.speed_horizontal, Enemy.direction_vertical * Enemy.speed_vertical)
+        self.rect.move_ip(Enemy.direction_horizontal * Enemy.speed_horizontal,
+                          Enemy.direction_vertical * Enemy.speed_vertical)
 
     @staticmethod
     def switch_horizontal_direction():
@@ -179,7 +230,8 @@ class Enemy(pygame.sprite.Sprite):
         Returns:
             bool: True if it has reached the border otherwise False.
         """
-        newrect = self.rect.move(Enemy.direction_horizontal * Enemy.speed_horizontal, Enemy.direction_vertical * Enemy.speed_vertical)
+        newrect = self.rect.move(Enemy.direction_horizontal * Enemy.speed_horizontal,
+                                 Enemy.direction_vertical * Enemy.speed_vertical)
         if newrect.left <= Settings.window_border:
             return True
         if newrect.right >= Settings.window_width - Settings.window_border:
@@ -192,7 +244,8 @@ class Enemy(pygame.sprite.Sprite):
         Returns:
             bool: True if it has reached the border otherwise False.
         """
-        newrect = self.rect.move(Enemy.direction_horizontal * Enemy.speed_horizontal, Enemy.direction_vertical * Enemy.speed_vertical)
+        newrect = self.rect.move(Enemy.direction_horizontal * Enemy.speed_horizontal,
+                                 Enemy.direction_vertical * Enemy.speed_vertical)
         if newrect.bottom >= Settings.enemy_bottom_border:
             return True
         return False
@@ -204,30 +257,32 @@ if __name__ == '__main__':
     pygame.init()
     #pylint: enable=no-member
 
-    screen = pygame.display.set_mode((Settings.window_width, Settings.window_height))
+    screen = pygame.display.set_mode(
+        (Settings.window_width, Settings.window_height))
     clock = pygame.time.Clock()
     score = 0
     font = pygame.font.Font(pygame.font.get_default_font(), 24)
-
 
     # All sprites are organized in sprite groups
     all_defenders = pygame.sprite.Group()
     all_enemies = pygame.sprite.Group()
     all_rockets = pygame.sprite.Group()
+    all_bombs = pygame.sprite.Group()
 
-    # Creating background and defender 
+    # Creating background and defender
     background = Background("background03.png")
-    defender = Defender("defender01.png")    
+    defender = Defender("defender01.png")
     all_defenders.add(defender)
 
     # Creating and ositioning the enemies in columns and rows
     for rowindex in range(0, 8):
         for colindex in range(0, Settings.enemy_nof_cols):
             aliennumber = rowindex // 2
-            enemy = Enemy("alienbig0{0}01.png".format(aliennumber), colindex, rowindex)
+            enemy = Enemy("alienbig0{0}01.png".format(
+                aliennumber), colindex, rowindex)
             all_enemies.add(enemy)
 
-    running = True 
+    running = True
     while running:
         clock.tick(60)
         for event in pygame.event.get():
@@ -241,18 +296,17 @@ if __name__ == '__main__':
                 elif event.key == K_RIGHT:
                     defender.move_right()
                 elif event.key == K_SPACE:
-                    if len(all_rockets) < 6:
+                    if len(all_rockets) < Settings.max_rockets:
                         rocket = Rocket("shoot.png", defender)
                         all_rockets.add(rocket)
             elif event.type == KEYUP:
-                if event.key == K_LEFT or  event.key == K_RIGHT:
+                if event.key == K_LEFT or event.key == K_RIGHT:
                     defender.move_stop()
 
-                
         # Update defender
         defender.update()
-        
-        #Update enemies
+
+        # Update enemies
         has_horizontal_border_reached = False
         for enemy in all_enemies:
             if enemy.is_horizontal_border_reached():
@@ -273,7 +327,7 @@ if __name__ == '__main__':
             if not has_vertical_border_reached:
                 Enemy.switch_vertical_direction()
 
-        # Update rockets       
+        # Update rockets
         all_rockets.update()
         rockets_to_remove = pygame.sprite.Group()
         enemies_to_remove = pygame.sprite.Group()
@@ -289,16 +343,34 @@ if __name__ == '__main__':
         all_rockets.remove(rockets_to_remove)
         all_enemies.remove(enemies_to_remove)
 
+        # Drop bombs
+        if len(all_bombs) < Settings.max_bombs and len(all_enemies) > 0:
+            enemy_index = randint(0, len(all_enemies) - 1)
+            bomb = Bomb("bomb.png", all_enemies.sprites()[enemy_index])
+            all_bombs.add(bomb)
+        all_bombs.update()
+        bombs_to_remove = pygame.sprite.Group()
+        tmp = pygame.sprite.spritecollide(defender, all_bombs, False)
+        for t in tmp:
+            t.is_to_remove = True
+        for bomb in all_bombs:
+            if bomb.is_to_remove:
+                bombs_to_remove.add(bomb)
+        all_bombs.remove(bombs_to_remove)
+
         # Draw
         background.draw(screen)
         all_defenders.draw(screen)
         all_enemies.draw(screen)
         all_rockets.draw(screen)
-        text_surface_scrore = font.render("Score: {0}".format(score), True, (255,255,255))
-        screen.blit(text_surface_scrore, (Settings.window_border, Settings.window_height - 50))
+        all_bombs.draw(screen)
+
+        text_surface_scrore = font.render(
+            "Score: {0}".format(score), True, (255, 255, 255))
+        screen.blit(text_surface_scrore,
+                    (Settings.window_border, Settings.window_height - 50))
         pygame.display.flip()
 
     #pylint: disable=no-member
     pygame.quit()
     #pylint: enable=no-member
-
