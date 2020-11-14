@@ -26,7 +26,7 @@ class Settings:
 
 
 class Background(object):
-    """Bitmap class to managethe baground of the game.
+    """Bitmap class to manage the background of the game.
     """
 
     def __init__(self, filename):
@@ -63,19 +63,42 @@ class Defender(pygame.sprite.Sprite):
             filename (string): name (without path) of the defender bitmap
         """
         super().__init__()
-        self.image = pygame.image.load(
+        self.image_alive = pygame.image.load(
             os.path.join(Settings.image_path, filename))
-        self.image = pygame.transform.scale(
-            self.image, (30, 30)).convert_alpha()
-        self.rect = self.image.get_rect()
+        self.image_alive = pygame.transform.scale(
+            self.image_alive, (30, 30)).convert_alpha()
+        self.rect = self.image_alive.get_rect()
         self.rect.centerx = Settings.window_width // 2
         self.rect.bottom = Settings.window_height - Settings.window_border
         self.direction = 0
         self.speed = 3
+        self.image = self.image_alive
+
+        self.images_explosion = []
+        self.imageindex_explosion = -1
+        for i in range(1, 5):
+            bitmap = pygame.image.load(os.path.join(
+                Settings.image_path, "explosion0{0}.png".format(i)))
+            bitmap = pygame.transform.scale(bitmap, (30, 30)).convert_alpha()
+            self.images_explosion.append(bitmap)
+
+        self.fliptime_explosion = 3
+        self.flipcounter = self.fliptime_explosion
 
     def update(self):
         """Implemention of the horizontal movements
         """
+        if self.imageindex_explosion == -1:
+            self.image = self.image_alive
+        else:
+            if self.imageindex_explosion < len(self.images_explosion):
+                self.image = self.images_explosion[self.imageindex_explosion]
+                if self.flipcounter <= 0:
+                    self.imageindex_explosion += 1
+                    self.flipcounter = self.fliptime_explosion
+                else:
+                    self.flipcounter -= 1
+
         newrect = self.rect.move(self.direction * self.speed, 0)
         if newrect.left <= Settings.window_border:
             self.move_stop()
@@ -97,6 +120,29 @@ class Defender(pygame.sprite.Sprite):
         """The defender stops.
         """
         self.direction = 0
+
+    def hit_by_bomb(self):
+        """Set status to "I was hit by a bomb".
+        """
+        self.imageindex_explosion = 0
+        self.flipcounter = self.fliptime_explosion
+
+    def is_exploded(self):
+        """Checks if defender explosion has finished.
+
+        Returns:
+            bool: True if explosion animation has finished, otherwise False
+        """
+        return self.imageindex_explosion >= len(self.images_explosion)
+
+    def is_exploding(self):
+        """Checks if defender explosion is ongoing.
+
+        Returns:
+            bool: True if explosion animation is running, otherwise False
+        """
+        return self.imageindex_explosion >= 0 and not self.is_exploded()
+
 
 
 class Rocket(pygame.sprite.Sprite):
@@ -184,6 +230,7 @@ class Enemy(pygame.sprite.Sprite):
 
         Args:
             filename (string): name (without path) of the enemy bitmap
+            aliennumber (int): number of the alien (according to the filename)
             colindex (int): number of the column of the sprite
             rowindex (int): number of the row of the sprite
         """
@@ -221,7 +268,10 @@ class Enemy(pygame.sprite.Sprite):
 
 
     def update(self):
-        """Implemention of the horizontal and vertical movements
+        """ Updates the status an behaviour.
+
+        Implemention of the horizontal and vertical movements and
+        if and how the animation runs.
         """
         if self.imageindex_explosion == -1:
             self.image = self.images_alive[self.imageindex_alive]
@@ -267,7 +317,7 @@ class Enemy(pygame.sprite.Sprite):
         """Has the enemy reached left or right borders of the screen.
 
         Returns:
-            bool: True if it has reached the border otherwise False.
+            bool: True if it has reached the border, otherwise False.
         """
         newrect = self.rect.move(Enemy.direction_horizontal * Enemy.speed_horizontal,
                                  Enemy.direction_vertical * Enemy.speed_vertical)
@@ -281,7 +331,7 @@ class Enemy(pygame.sprite.Sprite):
         """Has the enemy reached upper or lower borders his area.
 
         Returns:
-            bool: True if it has reached the border otherwise False.
+            bool: True if it has reached the border, otherwise False.
         """
         newrect = self.rect.move(Enemy.direction_horizontal * Enemy.speed_horizontal,
                                  Enemy.direction_vertical * Enemy.speed_vertical)
@@ -290,19 +340,38 @@ class Enemy(pygame.sprite.Sprite):
         return False
 
     def dropped_bomb(self):
+        """Indicates that the enemy has droped a bomb.
+        """
         self.imageindex_alive = 1
 
     def can_drop(self):
+        """Checks if the enemy can drop a bomb.
+
+        Returns:
+            bool: True if droping animation hasn't startet or is finished, otherwise Fals
+        """
         return self.flipcounter == self.fliptime_alive
 
     def hit_by_rocket(self):
+        """Indicates that the enemy is hit by a rocket.
+        """
         self.imageindex_explosion = 0
         self.flipcounter = self.fliptime_explosion
 
     def is_exploded(self):
+        """Checks if the explosion animation has finished.
+
+        Returns:
+            bool: True if explosion animation has finished, otherwise False.
+        """
         return self.imageindex_explosion >= len(self.images_explosion)
 
     def is_exploding(self):
+        """Checks if the explosion animation is running.
+
+        Returns:
+            bool: True if explosion animation is running, otherwise False.
+        """
         return self.imageindex_explosion >= 0 and not self.is_exploded()
 
 
@@ -330,7 +399,7 @@ if __name__ == '__main__':
     defender = Defender("defender01.png")
     all_defenders.add(defender)
 
-    # Creating and ositioning the enemies in columns and rows
+    # Creating and positioning the enemies in columns and rows
     for rowindex in range(0, 8):
         for colindex in range(0, Settings.enemy_nof_cols):
             aliennumber = rowindex // 2
@@ -386,7 +455,7 @@ if __name__ == '__main__':
         all_enemies_alive.update()
         all_enemies_exploding.update()
 
-        # Update rockets
+        # Explode rockets
         all_rockets.update()
         rockets_to_remove = pygame.sprite.Group()
 												 
@@ -418,12 +487,12 @@ if __name__ == '__main__':
                 bomb = Bomb("bomb.png", enemy)
                 all_bombs.add(bomb)
                 enemy.dropped_bomb()
-            all_bombs.add(bomb)
+            
         all_bombs.update()
         bombs_to_remove = pygame.sprite.Group()
-        tmp = pygame.sprite.spritecollide(defender, all_bombs, False)
-        for t in tmp:
-            t.is_to_remove = True
+        tmp = pygame.sprite.spritecollide(defender, all_bombs, True)
+        if len(tmp) > 0:
+            defender.hit_by_bomb()
         for bomb in all_bombs:
             if bomb.is_to_remove:
                 bombs_to_remove.add(bomb)
