@@ -375,70 +375,134 @@ class Enemy(pygame.sprite.Sprite):
         return self.imageindex_explosion >= 0 and not self.is_exploded()
 
 
-if __name__ == '__main__':
-    os.environ['SDL_VIDEO_WINDOW_POS'] = "10, 50"
-    #pylint: disable=no-member
-    pygame.init()
-    #pylint: enable=no-member
+class Game(object):
+    """The game management. 
 
-    screen = pygame.display.set_mode(
-        (Settings.window_width, Settings.window_height))
-    clock = pygame.time.Clock()
-    score = 0
-    font = pygame.font.Font(pygame.font.get_default_font(), 24)
+    After creating the game object you start the game with the
+    method run().
+    """
+    def __init__(self):
+        """Constructor.
+        """
+        self.screen = pygame.display.set_mode(
+            (Settings.window_width, Settings.window_height))
+        self.clock = pygame.time.Clock()
+        self.score = 0
+        self.font = pygame.font.Font(pygame.font.get_default_font(), 24)
+        self.running = False
 
-    # All sprites are organized in sprite groups
-    all_defenders = pygame.sprite.Group()
-    all_enemies_alive = pygame.sprite.Group()
-    all_enemies_exploding = pygame.sprite.Group()
-    all_rockets = pygame.sprite.Group()
-    all_bombs = pygame.sprite.Group()
+        self.all_defenders = pygame.sprite.Group()
+        self.all_enemies_alive = pygame.sprite.Group()
+        self.all_enemies_exploding = pygame.sprite.Group()
+        self.all_rockets = pygame.sprite.Group()
+        self.all_bombs = pygame.sprite.Group()
 
-    # Creating background and defender
-    background = Background("background03.png")
-    defender = Defender("defender01.png")
-    all_defenders.add(defender)
+        self.background = Background("background03.png")
+        self.defender = Defender("defender01.png")
+        self.all_defenders.add(self.defender)
+        for rowindex in range(0, 8):
+            for colindex in range(0, Settings.enemy_nof_cols):
+                aliennumber = rowindex // 2
+                enemy = Enemy("alienbig0{0}0{1}.png",
+                              aliennumber, colindex, rowindex)
+                self.all_enemies_alive.add(enemy)
 
-    # Creating and positioning the enemies in columns and rows
-    for rowindex in range(0, 8):
-        for colindex in range(0, Settings.enemy_nof_cols):
-            aliennumber = rowindex // 2
-            enemy = Enemy("alienbig0{0}0{1}.png",
-                          aliennumber, colindex, rowindex)
-            all_enemies_alive.add(enemy)
+    def run(self):
+        """Starting the game.
+        """
+        self.running = True
+        while self.running:
+            self.clock.tick(60)
+            self.watch_for_events()
+            self.update()
+            self.drop_bomb()
+            self.collision_rockets()
+            self.collision_bombs()
+            self.draw()
 
-    running = True
-    while running:
-        clock.tick(60)
-        for event in pygame.event.get():
-            if event.type == QUIT:
-                running = False
-            elif event.type == KEYDOWN:
-                if event.key == K_ESCAPE:
-                    running = False
-                elif event.key == K_LEFT:
-                    defender.move_left()
-                elif event.key == K_RIGHT:
-                    defender.move_right()
-                elif event.key == K_SPACE:
-                    if len(all_rockets) < Settings.max_rockets:
-                        rocket = Rocket("shoot.png", defender)
-                        all_rockets.add(rocket)
-            elif event.type == KEYUP:
-                if event.key == K_LEFT or event.key == K_RIGHT:
-                    defender.move_stop()
+    def draw(self):
+        """Drawing all bitmaps/sprites.
 
-        # Update defender
-        defender.update()
+        This method draws all sprites objects and
+        blits the text output to the screen. 
+        After that it flips the doublebuffer.
+        """
+        self.background.draw(self.screen)
+        self.all_defenders.draw(self.screen)
+        self.all_enemies_alive.draw(self.screen)
+        self.all_enemies_exploding.draw(self.screen)
+        self.all_rockets.draw(self.screen)
+        self.all_bombs.draw(self.screen)
+        text_surface_scrore = self.font.render(
+            "Score: {0}".format(self.score), True, (255, 255, 255))
+        self.screen.blit(text_surface_scrore,
+                         (Settings.window_border, Settings.window_height - 50))
+        pygame.display.flip()
+
+
+    def collision_bombs(self):
+        """Game logic: defender and bomb.
+        """
+        bombs_to_remove = pygame.sprite.Group()
+        tmp = pygame.sprite.spritecollide(self.defender, self.all_bombs, True)
+        if len(tmp) > 0:
+            self.defender.hit_by_bomb()
+        for bomb in self.all_bombs:
+            if bomb.is_to_remove:
+                bombs_to_remove.add(bomb)
+        self.all_bombs.remove(bombs_to_remove)
+
+    def collision_rockets(self):
+        """Game logic: enemies and rockets.
+        """
+        # Check rockets
+        rockets_to_remove = pygame.sprite.Group()
+        for rocket in self.all_rockets:
+            tmp = pygame.sprite.spritecollide(
+                rocket, self.all_enemies_alive, False)
+            if len(tmp) > 0:
+                rocket.is_to_remove = True
+                self.all_enemies_alive.remove(tmp)
+                self.all_enemies_exploding.add(tmp)
+                for enemy in tmp:
+                    enemy.hit_by_rocket()
+                    self.score += enemy.score
+            if rocket.is_to_remove:
+                rockets_to_remove.add(rocket)
+        self.all_rockets.remove(rockets_to_remove)
+        # Check enemies
+        enemies_to_remove = pygame.sprite.Group()
+        for enemy in self.all_enemies_exploding:
+            if enemy.is_exploded():
+                enemies_to_remove.add(enemy)
+        self.all_enemies_exploding.remove(enemies_to_remove)
+
+    def drop_bomb(self):
+        """Game logic: when will and how drops a bomb.
+        """
+        if len(self.all_bombs) < Settings.max_bombs and len(self.all_enemies_alive) > 0:
+            enemy_index = randint(0, len(self.all_enemies_alive) - 1)
+            enemy = self.all_enemies_alive.sprites()[enemy_index]
+            if enemy.can_drop():
+                bomb = Bomb("bomb.png", enemy)
+                self.all_bombs.add(bomb)
+                enemy.dropped_bomb()
+															   
+										
+
+    def update(self):
+        """Game logic: updates all sprites according to intended behaviour.
+        """
+        self.defender.update()
 
         # Update enemies
         has_horizontal_border_reached = False
-        for enemy in all_enemies_alive:
+        for enemy in self.all_enemies_alive:
             if enemy.is_horizontal_border_reached():
                 has_horizontal_border_reached = True
                 break
         has_vertical_border_reached = False
-        for enemy in all_enemies_alive:
+        for enemy in self.all_enemies_alive:
             if enemy.is_vertical_border_reached():
                 has_vertical_border_reached = True
                 break
@@ -447,71 +511,49 @@ if __name__ == '__main__':
             Enemy.switch_horizontal_direction()
             if not has_vertical_border_reached:
                 Enemy.switch_vertical_direction()
-
+        self.all_enemies_alive.update()
+        self.all_enemies_exploding.update()
         if has_horizontal_border_reached:
             if not has_vertical_border_reached:
                 Enemy.switch_vertical_direction()
 
-        all_enemies_alive.update()
-        all_enemies_exploding.update()
+        self.all_rockets.update()
+        self.all_bombs.update()
 
-        # Explode rockets
-        all_rockets.update()
-        rockets_to_remove = pygame.sprite.Group()
-												 
-        for rocket in all_rockets:
-            tmp = pygame.sprite.spritecollide(rocket, all_enemies_alive, False)
-            if len(tmp) > 0:
-                rocket.is_to_remove = True
-                all_enemies_alive.remove(tmp)
-                all_enemies_exploding.add(tmp)
-                for enemy in tmp:
-                    enemy.hit_by_rocket()
-                    score += enemy.score
-            if rocket.is_to_remove:
-                rockets_to_remove.add(rocket)
-        all_rockets.remove(rockets_to_remove)
+    def watch_for_events(self):
+        """Listing for key events.
 
-        # Update Enemies
-        enemies_to_remove = pygame.sprite.Group()
-        for enemy in all_enemies_exploding:
-            if enemy.is_exploded():
-                enemies_to_remove.add(enemy)
-        all_enemies_exploding.remove(enemies_to_remove)
+        According of which key went down or up the corresponding 
+        messages will send to the objects.
+        """
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                self.running = False
+            elif event.type == KEYDOWN:
+                if event.key == K_ESCAPE:
+                    self.running = False
+                elif event.key == K_LEFT:
+                    self.defender.move_left()
+                elif event.key == K_RIGHT:
+                    self.defender.move_right()
+                elif event.key == K_SPACE:
+                    if len(self.all_rockets) < Settings.max_rockets:
+                        rocket = Rocket("shoot.png", self.defender)
+											 
+                        self.all_rockets.add(rocket)
+            elif event.type == KEYUP:
+                if event.key == K_LEFT or event.key == K_RIGHT:
+                    self.defender.move_stop()
 
-        # Drop bombs
-        if len(all_bombs) < Settings.max_bombs and len(all_enemies_alive) > 0:
-            enemy_index = randint(0, len(all_enemies_alive) - 1)
-            enemy = all_enemies_alive.sprites()[enemy_index]
-            if enemy.can_drop():
-                bomb = Bomb("bomb.png", enemy)
-                all_bombs.add(bomb)
-                enemy.dropped_bomb()
-            
-        all_bombs.update()
-        bombs_to_remove = pygame.sprite.Group()
-        tmp = pygame.sprite.spritecollide(defender, all_bombs, True)
-        if len(tmp) > 0:
-            defender.hit_by_bomb()
-        for bomb in all_bombs:
-            if bomb.is_to_remove:
-                bombs_to_remove.add(bomb)
-        all_bombs.remove(bombs_to_remove)
+if __name__ == '__main__':
+    os.environ['SDL_VIDEO_WINDOW_POS'] = "10, 50"
+    #pylint: disable=no-member
+    pygame.init()
+    #pylint: enable=no-member
 
-        # Draw
-        background.draw(screen)
-        all_defenders.draw(screen)
-        all_enemies_alive.draw(screen)
-        all_enemies_exploding.draw(screen)
-        all_rockets.draw(screen)
-        all_bombs.draw(screen)
-
-        text_surface_scrore = font.render(
-            "Score: {0}".format(score), True, (255, 255, 255))
-        screen.blit(text_surface_scrore,
-                    (Settings.window_border, Settings.window_height - 50))
-        pygame.display.flip()
-
+    game = Game()
+    game.run()
+    
     #pylint: disable=no-member
     pygame.quit()
     #pylint: enable=no-member
